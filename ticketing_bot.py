@@ -77,7 +77,8 @@ def get_link_for_match(time_schedule):
     ticketing_btn = time_schedule.find_element_by_class_name('btns').find_element_by_css_selector('a')
     ticketing_btn.send_keys(Keys.ENTER)
 
-def login(driver):
+def login(driver, login_url, site_url):
+    driver.get(login_url)
     driver.switch_to.frame(driver.find_element_by_xpath('//*[@id="loginAllWrap"]/div[2]/iframe'))
 
     InputID = driver.find_element_by_id('userId')
@@ -91,7 +92,7 @@ def login(driver):
     BtnLogin = driver.find_element_by_id('btn_login')
     BtnLogin.send_keys(Keys.ENTER)
 
-    save_cookies(driver, 'cookies.txt')
+    driver.get(site_url)
 
 
 
@@ -128,14 +129,7 @@ driver = webdriver.Chrome('./chromedriver', options=options)
 
 
 #### 쿠키생성 ####
-driver.get(LOGIN_URL)
-save_cookies(driver,'cookies.txt')
-driver.quit()
-
-
-driver = webdriver.Chrome('./chromedriver')
-load_cookies(driver, 'cookies.txt')
-driver.get(SITE_URL)
+login(driver,login_url=LOGIN_URL,site_url=SITE_URL)
 
 # 매치 선택
 match = select_match(driver)
@@ -144,21 +138,8 @@ if match is None:
 
 # 예매하기 버튼 누르기
 get_link_for_match(match)
-if Alert(driver):
-    Alert(driver).accept()
-    try:
-        driver.implicitly_wait(0.5)
-        login(driver)
-        driver.get(SITE_URL)
-        match = select_match(driver)
-        get_link_for_match(match)
-    except Exception as e:
-        print(e)
-    pass
 
 print('끝')
-delete_cookies(driver,domains=['.interpark.com'])
-
 
 
 
