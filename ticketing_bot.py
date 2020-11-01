@@ -9,6 +9,7 @@ from selenium.webdriver.common.alert import Alert
 from selenium.webdriver.common.by import By
 
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -75,6 +76,9 @@ def select_match(driver):
 
 def btn_click(btn):
     btn.send_keys(Keys.ENTER)
+
+def js_function_call_click(btn):
+    driver.execute_script('arguments[0].click();', btn)
 
 def click_ticketing_link_for_match(match):
     ticketing_btn = match.find_element_by_class_name('btns').find_element_by_css_selector('a')
@@ -211,9 +215,8 @@ selected = False
 while not selected:
     for seat in seats:
         try:
-            if seat.get_attribute('title')[6:8] == 'S8': # Todo 원하는 좌석위치
-                driver.execute_script('arguments[0].click();', seat)
-                print(1)
+            if seat.get_attribute('title')[6:8] == 'S9': # Todo 원하는 좌석위치
+                js_function_call_click(seat)
                 selected = True
                 break
         except Exception as e:
@@ -225,6 +228,30 @@ switch_to_target_iframe(driver,'ifrmSeat')
 selection_complete_btn = driver.find_element_by_xpath('/html/body/form[1]/div/div[1]/div[3]/div/div[4]/a')
 btn_click(selection_complete_btn)
 
+# 티켓 에매
+driver.switch_to.default_content()
+switch_to_target_iframe(driver, 'ifrmBookStep')
+price_tables = driver.find_elements_by_class_name('Tb_price_Wp')
+
+try:
+    for price_table in price_tables:
+        str_price_name = price_table.find_element_by_xpath('//tbody/tr/th').text
+        if str_price_name == '기본가':
+            selected_price_table = price_table
+            break
+except Exception as e:
+    selected_price_table = ''
+    print(e)
+try :
+    options = Select(selected_price_table.find_element_by_xpath("//tbody/tr/td/table/tbody/tr/td[3]/select"))
+    options.select_by_visible_text('1매')  # <- data option 선택
+except Exception as e:
+    print(e)
+
+# 프레임 바꿔서 다음단계 누르기
+driver.switch_to.default_content()
+next_btn = driver.find_element_by_id('SmallNextBtnLink')
+js_function_call_click(next_btn)
 
 
 
