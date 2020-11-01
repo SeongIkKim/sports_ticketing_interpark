@@ -5,7 +5,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from selenium import webdriver
-from selenium.webdriver.common.alert import Alert
 from selenium.webdriver.common.by import By
 
 from selenium.webdriver.common.keys import Keys
@@ -13,14 +12,14 @@ from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-SPORTS_CODE = '07004' # 여자배구
-TEAM_CODE = 'PV022' # 한국도로공사 # Todo 팀별로 코드 정리
-OPPONENT = 'GS 칼텍스' # 상대팀 - GS 칼텍스 - 화면에 나오는 그대로 적어야함
-SITE_URL = f'http://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode={SPORTS_CODE}&TeamCode={TEAM_CODE}'
-LOGIN_URL = 'https://ticket.interpark.com/Gate/TPLogin.asp'
-
 env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path) #dotenv 사용해서 env 이용하기
+
+SPORTS_CODE = os.environ['SPORTS_CODE']
+TEAM_CODE = os.environ['TEAM_CODE']
+
+SITE_URL = f'http://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode={SPORTS_CODE}&TeamCode={TEAM_CODE}'
+LOGIN_URL = 'https://ticket.interpark.com/Gate/TPLogin.asp'
 
 
 def save_cookies(driver, location):
@@ -66,7 +65,7 @@ def select_match(driver):
             opponent = time_schedule.find_element_by_class_name('team2')
 
             # 찾던 경기가 아니면 다른 time_schedule 탐색
-            if opponent.text != OPPONENT:
+            if opponent.text != os.environ['OPPONENT']:
                 continue
 
             return time_schedule
@@ -121,6 +120,10 @@ def switch_to_target_iframe(driver, iframe_id):
             continue
     driver.switch_to.frame(target_iframe)
 
+def get_next_page(driver):
+    driver.switch_to.default_content()
+    next_btn = driver.find_element_by_id('SmallNextBtnLink')
+    js_function_call_click(next_btn)
 
 
 
@@ -228,7 +231,8 @@ switch_to_target_iframe(driver,'ifrmSeat')
 selection_complete_btn = driver.find_element_by_xpath('/html/body/form[1]/div/div[1]/div[3]/div/div[4]/a')
 btn_click(selection_complete_btn)
 
-# 티켓 에매
+## 가격/할인선택
+# 가격/할인 option 선택
 driver.switch_to.default_content()
 switch_to_target_iframe(driver, 'ifrmBookStep')
 price_tables = driver.find_elements_by_class_name('Tb_price_Wp')
@@ -249,9 +253,69 @@ except Exception as e:
     print(e)
 
 # 프레임 바꿔서 다음단계 누르기
+get_next_page(driver)
+
+## 배송선택/주문자확인
+# 예매자 생년월일 입력
+switch_to_target_iframe(driver, 'ifrmBookStep')
+birth_input = driver.find_element_by_id('YYMMDD')
+birth_input.send_keys(os.environ['USER_BIRTH'])
+
+# 프레임 바꿔서 다음단계 누르기
+get_next_page(driver)
+
+
+## 결제하기
+switch_to_target_iframe(driver, 'ifrmBookStep')
+# 결제방식 뜰 때까지 explicitly wait
+try:
+     kakaopay = WebDriverWait(driver, 3).until(
+        EC.presence_of_element_located((By.ID, 'Payment_22084'))
+    )
+except Exception as e:
+    print(e)
+# 카카오 페이 체크
+driver.find_element_by_css_selector("input[type='radio'][value='22084']").click() # 왜 되는거야..?
+# 프레임 바꿔서 다음 단계 누르기
+get_next_page(driver)
+
+
+## 정보제공동의 창
+switch_to_target_iframe(driver, 'ifrmBookStep')
+# 정보제공동의 체크박스 뜰 때까지 explicitly wait
+try:
+      WebDriverWait(driver, 3).until(
+        EC.presence_of_element_located((By.CLASS_NAME, 'agree_check'))
+    )
+except Exception as e:
+    print(e)
+# 필수 체크박스만 체크
+try:
+    driver.find_element_by_css_selector("input[type='checkbox'][id='CancelAgree']").click()
+    driver.find_element_by_css_selector("input[type='checkbox'][id='CancelAgree2']").click()
+except Exception as e:
+    print(e)
+# 프레임 바꿔서 결제하기 버튼 누르기
 driver.switch_to.default_content()
-next_btn = driver.find_element_by_id('SmallNextBtnLink')
+next_btn = driver.find_element_by_id('LargeNextBtnLink')
 js_function_call_click(next_btn)
 
 
+## 카카오페이 결제창
+switch_to_popup_window(driver)
+switch_to_target_iframe(driver, 'kakaoiframe')
+# body explicitly wait
+WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.TAG_NAME, 'body')))
+try:
+    pay_by_message_tab = WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.XPATH, '/html/body/div[4]/div/div/div[2]/ul/li[2]'))
+    )
+except Exception as e:
+    print(e)
+a = pay_by_message_tab.find_element_by_css_selector(".link_gnb").click() # xpath 함부로 사용하지 말자..
 
+phone_num_input = driver.find_element_by_id('userPhone')
+phone_num_input.send_keys(os.environ['USER_PHONE'])
+
+birth_input = driver.find_element_by_id('userBirth')
+birth_input.send_keys(os.environ['USER_BIRTH'])
