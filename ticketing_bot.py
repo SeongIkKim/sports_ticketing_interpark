@@ -8,7 +8,6 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -20,6 +19,9 @@ TEAM_CODE = os.environ['TEAM_CODE']
 
 SITE_URL = f'http://ticket.interpark.com/Contents/Sports/GoodsInfo?SportsCode={SPORTS_CODE}&TeamCode={TEAM_CODE}'
 LOGIN_URL = 'https://ticket.interpark.com/Gate/TPLogin.asp'
+
+section_names = os.environ.get('SECTION_NAMES').split(",")
+print("Target section:", section_names)
 
 
 def save_cookies(driver, location):
@@ -130,27 +132,30 @@ def get_next_page(driver):
 
 
 options = webdriver.ChromeOptions()
-# # 헤드리스 옵션
-# options.add_argument('headless')
-# # 일반적인 창옵션으로(모바일 반응형을 막기 위해)
-# options.add_argument('window-size=1920x1080')
-# # gpu 사용하지 않기
-# options.add_argument("disable-gpu")
-# # 헤드리스 감추기
-# ## user-urgent에서 headless 제거
-# options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36")
-# # 사용자 언어
-# options.add_argument('lang=ko_KR')
+headless = os.environ.get('HEADLESS') == '1'
+if headless :
+    # 헤드리스 옵션
+    options.add_argument('headless')
+    # 일반적인 창옵션으로(모바일 반응형을 막기 위해)
+    options.add_argument('window-size=1920x1080')
+    # gpu 사용하지 않기
+    options.add_argument("disable-gpu")
+    # 헤드리스 감추기
+    ## user-urgent에서 headless 제거
+    options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36")
+    # 사용자 언어
+    options.add_argument('lang=ko_KR')
 
 #################### 드라이버 구동 ###########################
 driver = webdriver.Chrome('./chromedriver', options=options)
 ###########################################################
 
-# # 헤드리스 감추기
-# ## 자바스크립트로 가짜 플러그인 리스트 추가
-# driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: function() {return[1, 2, 3, 4, 5];},});")
-# ## 브라우저 언어설정 추가
-# driver.execute_script("Object.defineProperty(navigator, 'languages', {get: function() {return ['ko-KR', 'ko']}})")
+if headless :
+    # 헤드리스 감추기
+    ## 자바스크립트로 가짜 플러그인 리스트 추가
+    driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: function() {return[1, 2, 3, 4, 5];},});")
+    ## 브라우저 언어설정 추가
+    driver.execute_script("Object.defineProperty(navigator, 'languages', {get: function() {return ['ko-KR', 'ko']}})")
 
 # ---------------------------------------------------------------
 
@@ -159,24 +164,25 @@ driver = webdriver.Chrome('./chromedriver', options=options)
 ### 드라이버 로그인 ###
 login(driver,login_url=LOGIN_URL,site_url=SITE_URL)
 
-# 매치 선택
-match = select_match(driver)
-if match is None:
-    print("선택한 경기를 찾을 수 없습니다.")
-# -------------직링 생성--------------
-# GROUP_CODE = '20007809'
-# PLAY_DATE = '20201106'
-# PLAY_SEQ = '001'
-# BIZ_MEMBER_CODE = '116737815'
-#
-# driver.get(f'http://poticket.interpark.com/Book/BookSession.asp?GroupCode={GROUP_CODE}&Tiki=N&Point=N&PlayDate={PLAY_DATE}&PlaySeq={PLAY_SEQ}&BizCode=&BizMemberCode={BIZ_MEMBER_CODE}')
-# -------------직링 생성끝--------------
+# Todo 선예매 인증부 만들기
 
+# 예매하기 버튼 누르기(아직 안열렸으면 새로고침 후 다시 열기)
+ticketing_available = False
+while not ticketing_available:
+    try:
+        # 매치 선택
+        match = select_match(driver)
+        if match is None:
+            print("선택한 경기를 찾을 수 없습니다.")
 
-parent_window = driver.current_window_handle
+        parent_window = driver.current_window_handle
 
-# 예매하기 버튼 누르기
-click_ticketing_link_for_match(match)
+        click_ticketing_link_for_match(match)
+        ticketing_available = True
+    except Exception as e:
+        print(e)
+        time.sleep(2)
+        driver.refresh()
 
 switch_to_popup_window(driver)
 
@@ -184,13 +190,18 @@ switch_to_popup_window(driver)
 switch_to_target_iframe(driver, 'ifrmSeat')
 
 # 좌석 종류 리스트 뽑아오기
+wanted_seat_types = os.environ.get('SEAT_TYPES').split(',')
+print(wanted_seat_types)
 available_seat_types = []
 try:
     seat_types = driver.find_elements_by_xpath('/html/body/div/div[3]/div[2]/div[1]/a')
     for seat_type in seat_types:
-        sgn = seat_type.get_attribute('sgn')
-        rc = seat_type.get_attribute('rc')
-        if int(rc) > 0 : # Todo 안정성을 위해 조정가능(2나 3 정도로)
+        seat_type_name = seat_type.get_attribute('sgn')
+        if seat_type_name not in wanted_seat_types:
+            continue
+        left_seat_cnt = seat_type.get_attribute('rc')
+        print(seat_type_name, left_seat_cnt)
+        if int(left_seat_cnt) > 0 : # Todo 안정성을 위해 조정가능(2나 3 정도로)
             available_seat_types.append(seat_type)
 except Exception as e:
     print(e)
@@ -218,7 +229,7 @@ selected = False
 while not selected:
     for seat in seats:
         try:
-            if seat.get_attribute('title')[6:8] == 'S9': # Todo 원하는 좌석위치
+            if any(section_name in seat.get_attribute('title') for section_name in section_names): # Todo 원하는 좌석위치
                 js_function_call_click(seat)
                 selected = True
                 break
@@ -235,22 +246,30 @@ btn_click(selection_complete_btn)
 # 가격/할인 option 선택
 driver.switch_to.default_content()
 switch_to_target_iframe(driver, 'ifrmBookStep')
-price_tables = driver.find_elements_by_class_name('Tb_price_Wp')
 
-try:
-    for price_table in price_tables:
-        str_price_name = price_table.find_element_by_xpath('//tbody/tr/th').text
-        if str_price_name == '기본가':
-            selected_price_table = price_table
-            break
-except Exception as e:
-    selected_price_table = ''
-    print(e)
-try :
-    options = Select(selected_price_table.find_element_by_xpath("//tbody/tr/td/table/tbody/tr/td[3]/select"))
-    options.select_by_visible_text('1매')  # <- data option 선택
-except Exception as e:
-    print(e)
+price_rows = driver.find_elements_by_xpath("//tr[starts-with(@id,'PriceRow']")
+print(price_rows.text)
+
+# Todo
+# price_tables = driver.find_elements_by_class_name('Tb_price_Wp')
+# try:
+#     for price_table in price_tables:
+#         price_type = price_table.find_element_by_xpath('//tbody/tr/th')
+#         if price_type.text == '기본가':
+#             price_name = driver.find_element_by_xpath('PriceRow')
+#             selected_price_table = price_table
+#             break
+# except Exception as e:
+#     selected_price_table = ''
+#     print(e)
+# try :
+#     options = Select(selected_price_table.find_element_by_xpath("//tbody/tr/td/table/tbody/tr/td[3]/select"))
+#     options.select_by_visible_text('1매')  # <- data option 선택
+# except Exception as e:
+#     print(e)
+
+# Todo 코로나 19 관련 버튼
+# Todo 멤버십 인
 
 # 프레임 바꿔서 다음단계 누르기
 get_next_page(driver)
@@ -319,3 +338,7 @@ phone_num_input.send_keys(os.environ['USER_PHONE'])
 
 birth_input = driver.find_element_by_id('userBirth')
 birth_input.send_keys(os.environ['USER_BIRTH'])
+
+pay_ask_btn = driver.find_element_by_class_name('btn_payask')
+print(pay_ask_btn.text)
+#btn_click(pay_ask_btn)
